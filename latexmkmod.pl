@@ -135,7 +135,6 @@ use List::Util qw( max );
 use Cwd;            # To be able to change cwd
 use Cwd "chdir";    # Ensure $ENV{PWD}  tracks cwd
 use Digest::MD5;
-use Data::Dump "dump";
 #use strict;
 
 # The following variables are assigned once and then used in symbolic
