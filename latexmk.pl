@@ -128,7 +128,7 @@ use Config;
 use File::Basename;
 use File::Copy;
 use File::Glob ':glob';    # Better glob.  Does not use space as item separator.
-use File::Path 2.08 qw( make_path );
+use File::Path 2.08 qw( make_path rmtree );
 use FileHandle;
 use File::Find;
 use List::Util qw( max );
@@ -303,6 +303,9 @@ $log_wrap = 79;
     ': File (.*) not found:\s*$',
     '! Unable to load picture or PDF file \\\'([^\\\']+)\\\'.',
 );
+
+$minted_not_found = '^\\! Package minted Error: Missing Pygments output;';
+$minted_file_cmd = '^runsystem\(pygmentize [^)]+\.pygtex (.+)\)...executed';
 
 ## Hash mapping file extension (w/o period, e.g., 'eps') to a single regexp,
 #  whose matching by a line in a file with that extension indicates that the
@@ -1006,6 +1009,8 @@ $clean_ext = "";        # space separated extensions of files that are
 $clean_full_ext = "";   # space separated extensions of files that are
 # to be deleted when doing cleanup_full, beyond
 # standard set and those in $clean_ext
+$cus_dep_transform = ''; # Subroutine that transforms source filenames
+$all_cus_dep_handler = ''; # Handler for other custom deps
 @cus_dep_list = ();     # Custom dependency list
 @default_files = ( '*.tex' );   # Array of LaTeX files to process when
 # no files are specified on the command line.
@@ -2289,6 +2294,11 @@ foreach $filename ( @file_list )
                 'synctex.gz', 'xdv',
                 split('\s+', $clean_full_ext)
             );
+        }
+
+        my $base_name = fileparse($filename, qr/\..*/);
+        if ( -d "${out_dir1}_minted-$base_name"){
+            rmtree("${out_dir1}_minted-$base_name");
         }
     }
     if ($cleanup_fdb) {
@@ -3933,6 +3943,8 @@ sub parse_log {
     push @lines, "";   # Blank line to terminate.  So multiline blocks
     # are always terminated by non-block line, rather than eof.
 
+    my $minted_last_file = "";
+
     $line = 0;
     my $state = 0;   # 0 => before ** line,
     # 1 => after **filename line, before next line (first file-reading line)
@@ -4165,6 +4177,20 @@ sub parse_log {
             push @bbl_files, $bbl_file;
             next LINE;
         }
+        if (/$minted_file_cmd/){
+            $minted_last_file = $1;
+        }
+        if (/$minted_not_found/){
+            my $file = clean_filename($minted_last_file);
+            warn "===========$My_name: Missing minted input file: '$file' from line\n  '$_'\n";
+            $dependents{normalize_filename($file, @pwd_log)} = 0;
+            if ( $aux_dir ) {
+                my $file1 = normalize_force_directory( $aux_dir1, $file );
+                $dependents{$file1} = 0;
+            }
+            next LINE;
+        }
+
         foreach my $pattern (@file_not_found) {
             if ( /$pattern/ ) {
                 my $file = clean_filename($1);
@@ -5000,6 +5026,11 @@ sub rdb_read {
                 rdb_create_rule( $rule, 'cusdep', '', $PAnew_cmd, 1,
                     $source, $dest, $base, 0, $run_time, $check_time, 1 );
             }
+            elsif ($rule =~ /^cusdep all/) {
+                my $PAnew_cmd = ['do_cusdep', $all_cus_dep_handler];
+                rdb_create_rule($rule, 'cusdep', '', $PAnew_cmd, 1,
+                    $source, $dest, $base, 0, $run_time, $check_time, 1 );
+            }
             elsif ( $rule =~ /^(makeindex|bibtex|biber)\s*(.*)$/ ) {
                 my $PA_extra_gen = [];
                 my $rule_generic = $1;
@@ -5758,14 +5789,18 @@ sub rdb_set_dependents {
 
 #************************************************************
 
+sub set_cus_dep_transform {
+    $cus_dep_transform = $_[0];
+}
+
 # By default do nothing
 sub rdb_transform_cusdep {
-    if (defined &{custom_transform_cusdep}){
-        no strict 'refs';
-        my $result = $_[0];
-        return custom_transform_cusdep($result);
+    my ($source, $all) = @_;
+    if ($cus_dep_transform ne ''){
+        return &$cus_dep_transform(@_);
+    } else {
+        return ($all) ? '' : $source;
     }
-    return $_[0];
 }
 
 sub rdb_one_dep {
@@ -5782,13 +5817,38 @@ sub rdb_one_dep {
     my ($base_name, $path, $toext) = fileparseA( $new_dest );
     $base_name = $path.$base_name;
     $toext =~ s/^\.//;
+
+    # intercept custom dep handling
+    if ($all_cus_dep_handler ne ''){
+        my $transformed_source = rdb_transform_cusdep($file, 1);
+        if ($transformed_source ne '' && -e $transformed_source){
+            $$Pfrom_rule = "cusdep all $transformed_source";
+            local @PAnew_cmd = ( 'do_cusdep', $all_cus_dep_handler);
+            if ( !-e $new_dest ) {
+                push @new_sources, $new_dest;
+            }
+            if (! rdb_rule_exists( $$Pfrom_rule ) ) {
+                print "=== Creating rule for '$$Pfrom_rule'\n" if $diagnostics > -1;
+                rdb_create_rule( $$Pfrom_rule, 'cusdep', '', \@PAnew_cmd, 3,
+                    $transformed_source, $new_dest, $base_name, 0 );
+            }
+            else {
+                rdb_one_rule(
+                    $$Pfrom_rule,
+                    sub{ @$PAint_cmd = @PAnew_cmd; $$Pdest = $new_dest;}
+                );
+            }
+            return ;
+        }
+    }
+
     my $Pinput_extensions = $input_extensions{$rule};
     DEP:
     foreach my $dep ( @cus_dep_list ) {
         my ($fromext,$proptoext,$must,$func_name) = split('\s+',$dep);
         if ( $toext eq $proptoext ) {
             my $source = "$base_name.$fromext";
-            my $transformed_source = rdb_transform_cusdep($source);
+            my $transformed_source = rdb_transform_cusdep($source, 0);
             # Found match of rule
             if ($diagnostics) {
                 print "Found cusdep:  $source => $transformed_source to make $rule:$new_dest ====\n";
@@ -5841,7 +5901,7 @@ sub rdb_one_dep {
             #    without graphics extension for file, when file does
             #    not exist.  So we will try to find something to make it.
             my $source = "$base_name.$fromext";
-            my $transformed_source = rdb_transform_cusdep($source);
+            my $transformed_source = rdb_transform_cusdep($source, 0);
             if ( -e $transformed_source ) {
                 $new_dest = "$base_name.$proptoext";
                 my $from_rule = "cusdep $fromext $proptoext $base_name";
@@ -8194,9 +8254,13 @@ sub kpsewhich {
 sub add_cus_dep {
     # Usage: add_cus_dep( from_ext, to_ext, flag, sub_name )
     # Add cus_dep after removing old versions
-    my ($from_ext, $to_ext, $must, $sub_name) = @_;
-    remove_cus_dep( $from_ext, $to_ext );
-    push @cus_dep_list, "$from_ext $to_ext $must $sub_name";
+    if($#_  == 0){
+        $all_cus_dep_handler = $_[0];
+    } else {
+        my ($from_ext, $to_ext, $must, $sub_name) = @_;
+        remove_cus_dep( $from_ext, $to_ext );
+        push @cus_dep_list, "$from_ext $to_ext $must $sub_name";
+    }
 }
 
 ####################################################
