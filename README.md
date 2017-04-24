@@ -7,3 +7,9 @@ New features (mainly for out of source builds):
  3. Custom dependencies subroutines now have two extra arguments `$cusdep_source` and `$cusdep_dest`.
 
 The bug with not all the files cleaned with `-c` flag is also fixed.
+
+Installation on Windows with Texlive:
+
+ 1. Copy `latexmkmod.pl` to the `TEXMFLOCAL`\scripts directory (C:\texlive\texmf-local\scripts on my PC) Use `kpsewhich -var-value TEXMFLOCAL` to show your `TEXMFLOCAL` variable. If there is no 'scripts' directory create it.
+ 2. Copy runscript.exe to the latexmkmod.exe in the same directory (C:\texlive\2016\bin\win32, it is usually in `PATH`)
+ 3. Run `mktexlsr` in cmd.exe (you may need to run it as Administrator)
