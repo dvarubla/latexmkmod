@@ -135,7 +135,7 @@ use List::Util qw( max );
 use Cwd;            # To be able to change cwd
 use Cwd "chdir";    # Ensure $ENV{PWD}  tracks cwd
 use Digest::MD5;
-
+use Data::Dump "dump";
 #use strict;
 
 # The following variables are assigned once and then used in symbolic
@@ -2741,7 +2741,12 @@ sub do_cusdep {
             "  function name '$func_name' does not exists.\n";
     }
     else {
-        my $cusdep_ret = &$func_name( $$Pbase );
+        my $cusdep_ret;
+        {
+            no warnings 'once';
+            local ($cusdep_source, $cusdep_dest) = ($$Psource, $$Pdest);
+            $cusdep_ret = &$func_name( $$Pbase );
+        }
         if ( defined $cusdep_ret && ($cusdep_ret != 0) ) {
             $return = $cusdep_ret;
             if ($return) {
@@ -4982,8 +4987,6 @@ sub rdb_read {
                 my $fromext = $1;
                 my $toext = $2;
                 my $base = $3;
-                $source = "$base.$fromext";
-                $dest =   "$base.$toext";
                 my $PAnew_cmd = ['do_cusdep', ''];
                 foreach my $dep ( @cus_dep_list ) {
                     my ($tryfromext,$trytoext,$must,$func_name) = split('\s+',$dep);
@@ -5755,6 +5758,16 @@ sub rdb_set_dependents {
 
 #************************************************************
 
+# By default do nothing
+sub rdb_transform_cusdep {
+    if (defined &{custom_transform_cusdep}){
+        no strict 'refs';
+        my $result = $_[0];
+        return custom_transform_cusdep($result);
+    }
+    return $_[0];
+}
+
 sub rdb_one_dep {
     # Helper for finding dependencies.  One case, $rule and $file given
     # Assume file (and rule) context for DESTINATION file.
@@ -5775,11 +5788,12 @@ sub rdb_one_dep {
         my ($fromext,$proptoext,$must,$func_name) = split('\s+',$dep);
         if ( $toext eq $proptoext ) {
             my $source = "$base_name.$fromext";
+            my $transformed_source = rdb_transform_cusdep($source);
             # Found match of rule
             if ($diagnostics) {
-                print "Found cusdep:  $source to make $rule:$new_dest ====\n";
+                print "Found cusdep:  $source => $transformed_source to make $rule:$new_dest ====\n";
             }
-            if ( -e $source ) {
+            if ( -e $transformed_source ) {
                 $$Pfrom_rule = "cusdep $fromext $toext $base_name";
                 #??             print "?? Ensuring rule for '$$Pfrom_rule'\n";
                 local @PAnew_cmd = ( 'do_cusdep', $func_name );
@@ -5789,7 +5803,7 @@ sub rdb_one_dep {
                 if (! rdb_rule_exists( $$Pfrom_rule ) ) {
                     print "=== Creating rule for '$$Pfrom_rule'\n";
                     rdb_create_rule( $$Pfrom_rule, 'cusdep', '', \@PAnew_cmd, 3,
-                        $source, $new_dest, $base_name, 0 );
+                        $transformed_source, $new_dest, $base_name, 0 );
                 }
                 else {
                     rdb_one_rule(
@@ -5827,7 +5841,8 @@ sub rdb_one_dep {
             #    without graphics extension for file, when file does
             #    not exist.  So we will try to find something to make it.
             my $source = "$base_name.$fromext";
-            if ( -e $source ) {
+            my $transformed_source = rdb_transform_cusdep($source);
+            if ( -e $transformed_source ) {
                 $new_dest = "$base_name.$proptoext";
                 my $from_rule = "cusdep $fromext $proptoext $base_name";
                 push @new_sources, $new_dest;
@@ -5836,7 +5851,7 @@ sub rdb_one_dep {
                 local @PAnew_cmd = ( 'do_cusdep', $func_name );
                 if (! rdb_rule_exists( $from_rule ) ) {
                     rdb_create_rule( $from_rule, 'cusdep', '', \@PAnew_cmd, 3,
-                        $source, $new_dest, $base_name, 0 );
+                        $transformed_source, $new_dest, $base_name, 0 );
                 }
                 else {
                     rdb_one_rule(
@@ -8800,3 +8815,4 @@ sub default_break {
 
 #************************************************************
 #************************************************************
+1;
