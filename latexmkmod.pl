@@ -297,7 +297,7 @@ $log_wrap = 79;
     '^\\! LaTeX Error: File `([^\\\']*)\\\' not found\\.',
     '.*?:\\d*: LaTeX Error: File `([^\\\']*)\\\' not found\\.',
     '^LaTeX Warning: File `([^\\\']*)\\\' not found',
-    '^Package .* [fF]ile `([^\\\']*)\\\' not found',
+    '^(?:\\!)? *Package (.*) [fF]ile `([^\\\']*)\\\' not found',
     'Error: pdflatex \(file ([^\)]*)\): cannot find image file',
     ': File (.*) not found:\s*$',
     '! Unable to load picture or PDF file \\\'([^\\\']+)\\\'.',
@@ -4195,7 +4195,16 @@ sub parse_log {
 
         foreach my $pattern (@file_not_found) {
             if ( /$pattern/ ) {
-                my $file = clean_filename($1);
+                my $extra_match = '';
+                my $filename = $1;
+                if ($2) {
+                    $extra_match = $1;
+                    $filename = $2;
+                }
+                my $file = clean_filename($filename);
+                if ($extra_match =~ /^Listings / ){
+                    $file =~ s/\((\.[^)]+)\)/$1/;
+                }
                 warn "===========$My_name: Missing input file: '$file' from line\n  '$_'\n";
                 warn "$My_name: Missing input file: '$file' from line\n  '$_'\n"
                     unless $silent;
