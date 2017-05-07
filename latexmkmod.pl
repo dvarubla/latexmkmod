@@ -1508,6 +1508,14 @@ if ( $auto_rc_use ) {
     read_first_rc_file_in_list( "latexmkrc", ".latexmkrc" );
 }
 
+$cus_option_handler = '';
+$cus_help_printer = '';
+
+sub set_cus_option_handler {
+    $cus_option_handler = $_[0];
+    $_[1] && ($cus_help_printer = $_[1]);
+}
+
 ## Process command line args.
 @command_line_file_list = ();
 $bad_options = 0;
@@ -1742,12 +1750,28 @@ while ($_ = $ARGV[0])
         push @extra_xelatex_options, $original;
     }
     elsif (/^-/) {
-        warn "$My_name: $_ bad option\n";
-        $bad_options++;
+        my $is_bad_option = 1;
+        if ($cus_option_handler ne '') {
+            $is_bad_option = &$cus_option_handler(0, $_, \@ARGV);
+        }
+        if ($is_bad_option) {
+            warn "$My_name: $_ bad option\n";
+            $bad_options++;
+        }
     }
     else {
-        push @command_line_file_list, $_ ;
+        my $filename = $_;
+        if ($cus_option_handler ne '') {
+            $filename = &$cus_option_handler(1, $_, \@ARGV);
+        }
+        if ($filename ne '') {
+            push @command_line_file_list, $filename;
+        }
     }
+}
+
+if ($cus_option_handler ne '') {
+    &$cus_option_handler(2);
 }
 
 if ( $bad_options > 0 ) {
@@ -3506,6 +3530,10 @@ sub print_help
         "with the option -showextraoptions to see a list of these\n",
         "\n",
         "Report bugs etc to John Collins <jcc8 at psu.edu>.\n";
+
+    if ($cus_help_printer ne ''){
+        &$cus_help_printer();
+    }
 
 } #END print_help
 
