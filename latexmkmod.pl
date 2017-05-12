@@ -1160,11 +1160,6 @@ $mult_defined = 0;
 $bad_reference = 0;
 $bad_citation = 0;
 
-# Cache of expensive-to-compute state variables, e.g., cwd in form
-# fixed to deal with cygwin issues.
-%cache = ();
-&cache_good_cwd;
-
 # Set search paths for includes.
 # Set them early so that they can be overridden
 $BIBINPUTS = $ENV{'BIBINPUTS'};
@@ -1773,6 +1768,12 @@ while ($_ = $ARGV[0])
 if ($cus_option_handler ne '') {
     &$cus_option_handler(2);
 }
+
+# Cache of expensive-to-compute state variables, e.g., cwd in form
+# fixed to deal with cygwin issues.
+# cwd can be changed in rc file
+%cache = ();
+&cache_good_cwd;
 
 if ( $bad_options > 0 ) {
     &exit_help( "Bad options specified" );
