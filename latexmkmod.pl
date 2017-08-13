@@ -121,7 +121,9 @@ use warnings;
 
 $my_name = 'latexmk';
 $My_name = 'Latexmk';
-$version_num = '4.52c';
+$orig_version_num = '4.52c';
+$mod_version_num = '0.1';
+$version_num = "$orig_version_num mod $mod_version_num";
 $version_details = "$My_name, John Collins, 19 Jan. 2017";
 
 use Config;
