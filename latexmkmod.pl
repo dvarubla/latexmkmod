@@ -129,7 +129,7 @@ $version_details = "$My_name, John Collins, 19 Jan. 2017";
 use Config;
 use File::Basename;
 use File::Copy;
-use File::Glob ':glob';    # Better glob.  Does not use space as item separator.
+use File::Glob ':globally';    # Better glob.  Does not use space as item separator.
 use File::Path 2.08 qw( make_path rmtree );
 use FileHandle;
 use File::Find;
