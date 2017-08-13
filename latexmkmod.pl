@@ -5843,6 +5843,13 @@ sub rdb_transform_cusdep {
     }
 }
 
+sub rdb_parse_file_dest {
+    my ($base_name, $path, $toext) = fileparseA( $_[0] );
+    $base_name = $path.$base_name;
+    $toext =~ s/^\.//;
+    ($_[1], $_[2], $_[3]) = ($path, $base_name, $toext);
+}
+
 sub rdb_one_dep {
     # Helper for finding dependencies.  One case, $rule and $file given
     # Assume file (and rule) context for DESTINATION file.
@@ -5854,13 +5861,25 @@ sub rdb_one_dep {
     }
     #print "=============ONE_DEP: '$rule' '$file'\n";
     local $new_dest = $file;
-    my ($base_name, $path, $toext) = fileparseA( $new_dest );
-    $base_name = $path.$base_name;
-    $toext =~ s/^\.//;
+    my ($path, $base_name, $toext);
+    rdb_parse_file_dest($new_dest, $path, $base_name, $toext);
 
     # intercept custom dep handling
     if ($all_cus_dep_handler ne ''){
-        my $transformed_source = rdb_transform_cusdep($file, 1);
+        my $transformed_source_dest = rdb_transform_cusdep($file, 1);
+        my $transformed_source;
+        if (ref($transformed_source_dest) eq 'ARRAY'){
+            $transformed_source = $transformed_source_dest -> [0];
+            $new_dest = $transformed_source_dest -> [1];
+            if($new_dest ne $file){
+                ${$PHsource}{$new_dest} = delete ${$PHsource}{$file};
+                delete $dependents{$file};
+                $file = $new_dest;
+            }
+            rdb_parse_file_dest($new_dest, $path, $base_name, $toext);
+        } else {
+            $transformed_source = $transformed_source_dest;
+        }
         if ($transformed_source ne '' && -e $transformed_source){
             $$Pfrom_rule = "cusdep all $transformed_source";
             local @PAnew_cmd = ( 'do_cusdep', $all_cus_dep_handler);
